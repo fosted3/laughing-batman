@@ -35,15 +35,16 @@ void setup()
 {
   set_gamma(gam);
   leds.begin();
-  Serial.begin(9600);
+  Serial1.begin(9600);
+  Serial.begin(115200);
   serial_input.reserve(50);
 }
 
 void loop()
 {
-  while(Serial.available())
+  while(Serial1.available())
   {
-    char input = (char) Serial.read();
+    char input = (char) Serial1.read();
     if (input == '\n' || input == '\r')
     {
       new_command = true;
