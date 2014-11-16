@@ -75,16 +75,17 @@ void loop() {
   
   delay(10);
   count++;
-  if(count >= 30000 && active){//30000
+  if((count >= 30000) && active){//30000
     Serial.println("Updating time");
-    boolean updated = false;
-    do
-    {
+    Serial.println("Active: ");
+    if (active) { Serial.println("true"); }
+    else { Serial.println("false"); }
     sendNTPpacket(timeServer); // send an NTP packet to a time server
     // wait to see if a reply is available
     delay(2000);
+    sendNTPpacket(timeServer);
+    delay(2000);
     if ( Udp.parsePacket() ) {
-      updated = true;
     Serial.println("packet received");
     // We've received a packet, read the data from it
     Udp.read(packetBuffer, NTP_PACKET_SIZE); // read the packet into the buffer
@@ -123,6 +124,7 @@ void loop() {
     Serial.println(epoch % 60); // print the second
     float fluxtime = ((epoch  % 86400L)-5*3600) / 3600 + (epoch  % 3600) / 3600.0;
     Serial.println(fluxtime);
+    Serial.println(active_brightness);
     Serial1.print("lighting ");
     Serial1.print(time_to_temp(fluxtime));
     Serial1.print(" ");
@@ -132,7 +134,6 @@ void loop() {
     {
       Serial.println("Failed to update time");
     }
-    } while (!updated);
     count = 0;
   }
   
@@ -178,8 +179,6 @@ void loop() {
         else if (c != '\r') {    // if you got anything else but a carriage return character,
           buffer[i++] = c;      // add it to the end of the currentLine
         }
-        
-        
         // Check to see if the client request was "GET /H" or "GET /L":
         if (endsWith(buffer, "HTTP/1.1") && sent_command == false) {
           sent_command = true;
@@ -193,6 +192,8 @@ void loop() {
           int blue;
           int stopstuff3;
           int stopstuff4;
+          //Serial.print("Buffer is: ");
+         //Serial.println(temp);
           if(temp[6] == 't'){
               //lighting mode
               active = false;
@@ -205,7 +206,7 @@ void loop() {
               Serial1.print(" ");
               Serial1.println(temp.substring(brightness, stopstuff2));
           }
-          if(temp[6] == 'r'){
+          else if(temp[6] == 'r'){
               //RGB mode
               active = false;
               red = temp.indexOf('=')+1;
@@ -227,7 +228,7 @@ void loop() {
               
               
           }
-          if(temp[6] == 'b'){
+          else if(temp[6] == 'b'){
             //random brightness mode
             active = false;
             brightness = temp.indexOf('=')+1;
@@ -235,7 +236,7 @@ void loop() {
             Serial1.print("random ");
             Serial1.println(temp.substring(brightness, stopstuff));
           }
-          if(temp[6] == 'p'){
+          else if(temp[6] == 'p'){
             //random brightness mode
             active = false;
             brightness = temp.indexOf('=')+1;
@@ -243,7 +244,8 @@ void loop() {
             Serial1.print("plasma ");
             Serial1.println(temp.substring(brightness, stopstuff));
           }
-          if(temp[6] == 'a'){
+          else if(temp[6] == 'a' && temp[7] == 'c'){
+            //Serial.println(temp);
             //Active mode
             active = true;
             count = 30001; //CHANGE
