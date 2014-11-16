@@ -5,12 +5,28 @@
 #endif
 #include <WiFi.h>
 
+long count = 0;
+boolean active = false;
+int active_brightness = 0;
 // your network name also called SSID
 char ssid[] = "hacktheplanet";
 // your network password
 char password[] = "hackrpi2014";
 // your network key Index number (needed only for WEP)
 int keyIndex = 0;
+
+unsigned int localPort = 2390;      // local port to listen for UDP packets
+
+IPAddress timeServer(216,229,0,179); // time.nist.gov NTP server
+
+const int NTP_PACKET_SIZE = 48; // NTP time stamp is in the first 48 bytes of the message
+
+byte packetBuffer[ NTP_PACKET_SIZE]; //buffer to hold incoming and outgoing packets
+
+// A UDP instance to let us send and receive packets over UDP
+WiFiUDP Udp;
+
+
 
 WiFiServer server(80);
 
@@ -48,13 +64,71 @@ void setup() {
   Serial.println("Starting webserver on port 80");
   server.begin();                           // start the web server on port 80
   Serial.println("Webserver started!");
+  
+  Serial.println("\nStarting connection to server...");
+  Udp.begin(localPort);
 }
 
 void loop() {
   int i = 0;
   WiFiClient client = server.available();   // listen for incoming clients
+  
+  delay(10);
+  count++;
+  if(count >= 30000 && active){//30000
+    sendNTPpacket(timeServer); // send an NTP packet to a time server
+    // wait to see if a reply is available
+    delay(1000);
+    if ( Udp.parsePacket() ) {
+    Serial.println("packet received");
+    // We've received a packet, read the data from it
+    Udp.read(packetBuffer, NTP_PACKET_SIZE); // read the packet into the buffer
 
-  if (client) {                             // if you get a client,
+    //the timestamp starts at byte 40 of the received packet and is four bytes,
+    // or two words, long. First, esxtract the two words:
+
+    unsigned long highWord = word(packetBuffer[40], packetBuffer[41]);
+    unsigned long lowWord = word(packetBuffer[42], packetBuffer[43]);
+    // combine the four bytes (two words) into a long integer
+    // this is NTP time (seconds since Jan 1 1900):
+    unsigned long secsSince1900 = highWord << 16 | lowWord;
+
+    // now convert NTP time into everyday time:
+    Serial.print("Unix time = ");
+    // Unix time starts on Jan 1 1970. In seconds, that's 2208988800:
+    const unsigned long seventyYears = 2208988800UL;
+    // subtract seventy years:
+    unsigned long epoch = secsSince1900 - seventyYears;
+    // print Unix time:
+
+    // print the hour, minute and second:
+    Serial.print("The EST time is ");       // UTC is the time at Greenwich Meridian (GMT)
+    Serial.print(((epoch  % 86400L)-5*3600) / 3600); // print the hour (86400 equals secs per day)
+    Serial.print(':');
+    if ( ((epoch % 3600) / 60) < 10 ) {
+      // In the first 10 minutes of each hour, we'll want a leading '0'
+      Serial.print('0');
+    }
+    Serial.print((epoch  % 3600) / 60); // print the minute (3600 equals secs per minute)
+    Serial.print(':');
+    if ( (epoch % 60) < 10 ) {
+      // In the first 10 seconds of each minute, we'll want a leading '0'
+      Serial.print('0');
+    }
+    Serial.println(epoch % 60); // print the second
+    float fluxtime = ((epoch  % 86400L)-5*3600) / 3600 + (epoch  % 3600) / 3600.0;
+    Serial.println(fluxtime);
+    Serial1.print("lighting ");
+    Serial1.print(time_to_temp(fluxtime));
+    Serial1.print(" ");
+    Serial1.println(active_brightness);
+    }
+    
+    count = 0;
+  }
+  
+  if (client) {     // if you get a client,
+    boolean sent_command = false;
     Serial.println("new client");           // print a message out the serial port
     char buffer[150] = {0};                 // make a buffer to hold incoming data
     while (client.connected()) {            // loop while the client's connected
@@ -74,10 +148,10 @@ void loop() {
 
             // the content of the HTTP response follows the header:
             client.println("<html><head><title>Smart Lights</title></head><body align=center>\n<h1 align=center><font color=\"red\">Welcome to Smart Lights</font></h1>");
-            client.println("<p>Lighting Mode</p><form action=\"\" method=\"get\" target=\"_blank\">Temperature: <input type=\"text\" name=\"temp\"> (input value between 1000-4000)<br>Brightness: <input type=\"text\" name=\"brig\"> (input value between 0-100) <br><input type=\"submit\" value=\"Submit\"></form>");
+            client.println("<p>Lighting Mode</p><form action=\"\" method=\"get\" target=\"_blank\">Temperature: <input type=\"text\" name=\"temp\"> (input value between 1000-40000)<br>Brightness: <input type=\"text\" name=\"brig\"> (input value between 0-100) <br><input type=\"submit\" value=\"Submit\"></form>");
             client.println("<p>RGB Mode</p><form action=\"\" method=\"get\" target=\"_blank\">Red: <input type=\"text\" name=\"r\"> (input value between 0-255)<br>Green: <input type=\"text\" name=\"g\"> (input value between 0-255)<br>blue: <input type=\"text\" name=\"b\"> (input value between 0-255) <br>Brightness: <input type=\"text\" name=\"brig\"> (input value between 0-100) <br><input type=\"submit\" value=\"Submit\"></form>");
-            client.println("<p>Random Mode</p><form action=\"\" method=\"get\" target=\"_blank\">Brightness: <input type=\"text\" name=\"brig\"> (input value between 0-100) <br><input type=\"submit\" value=\"Submit\"></form>");
-            client.println("<p>Plasma Mode</p><form action=\"\" method=\"get\" target=\"_blank\">Brightness: <input type=\"text\" name=\"plasma\"> (input value between 0-100) <br><input type=\"submit\" value=\"Submit\"></form>");
+            client.println("<p>Random Mode</p><form action=\"\" method=\"get\" target=\"_blank\">Brightness: <input type=\"text\" name=\"brig\"> (input value between 0-100) <br><input type=\"submit\" value=\"Submit\"></form>\n<p>Plasma Mode</p><form action=\"\" method=\"get\" target=\"_blank\">Brightness: <input type=\"text\" name=\"plasma\"> (input value between 0-100) <br><input type=\"submit\" value=\"Submit\"></form>");
+            client.println("<p>Active Mode</p><form action=\"\" method=\"get\" target=\"_blank\">Brightness: <input type=\"text\" name=\"active\"> (input value between 0-100) <br><input type=\"submit\" value=\"Submit\"></form>");
             //client.print("RED LED <button onclick=\"location.href='/H'\">HIGH</button>");
             //client.println(" <button onclick=\"location.href='/L'\">LOW</button><br>");
             
@@ -98,7 +172,8 @@ void loop() {
         
         
         // Check to see if the client request was "GET /H" or "GET /L":
-        if (endsWith(buffer, "HTTP/1.1")) {
+        if (endsWith(buffer, "HTTP/1.1") && sent_command == false) {
+          sent_command = true;
           String temp = buffer;
           int tempLight;
           int stopstuff;
@@ -111,6 +186,7 @@ void loop() {
           int stopstuff4;
           if(temp[6] == 't'){
               //lighting mode
+              active = false;
               tempLight = temp.indexOf('=')+1;
               stopstuff = temp.indexOf('&');
               brightness = temp.indexOf('=', stopstuff)+1;
@@ -122,6 +198,7 @@ void loop() {
           }
           if(temp[6] == 'r'){
               //RGB mode
+              active = false;
               red = temp.indexOf('=')+1;
               stopstuff = temp.indexOf('&');
               green = temp.indexOf('=', stopstuff)+1;
@@ -143,6 +220,7 @@ void loop() {
           }
           if(temp[6] == 'b'){
             //random brightness mode
+            active = false;
             brightness = temp.indexOf('=')+1;
             stopstuff = temp.indexOf(' ', 6);
             Serial1.print("random ");
@@ -150,10 +228,20 @@ void loop() {
           }
           if(temp[6] == 'p'){
             //random brightness mode
+            active = false;
             brightness = temp.indexOf('=')+1;
             stopstuff = temp.indexOf(' ', 6);
             Serial1.print("plasma ");
             Serial1.println(temp.substring(brightness, stopstuff));
+          }
+          if(temp[6] == 'a'){
+            //Active mode
+            active = true;
+            count = 30001; //CHANGE
+            brightness = temp.indexOf('=')+1;
+            stopstuff = temp.indexOf(' ', 6);
+            active_brightness = temp.substring(brightness, stopstuff).toInt();
+            //Serial.println(active_brightness);
           }
           
         }
@@ -184,6 +272,37 @@ boolean endsWith(char* inString, char* compString) {
   return true;
 }
 
+// send an NTP request to the time server at the given address
+unsigned long sendNTPpacket(IPAddress& address)
+{
+  //Serial.println("1");
+  // set all bytes in the buffer to 0
+  memset(packetBuffer, 0, NTP_PACKET_SIZE);
+  // Initialize values needed to form NTP request
+  // (see URL above for details on the packets)
+  //Serial.println("2");
+  packetBuffer[0] = 0b11100011;   // LI, Version, Mode
+  packetBuffer[1] = 0;     // Stratum, or type of clock
+  packetBuffer[2] = 6;     // Polling Interval
+  packetBuffer[3] = 0xEC;  // Peer Clock Precision
+  // 8 bytes of zero for Root Delay & Root Dispersion
+  packetBuffer[12]  = 49;
+  packetBuffer[13]  = 0x4E;
+  packetBuffer[14]  = 49;
+  packetBuffer[15]  = 52;
+
+  //Serial.println("3");
+
+  // all NTP fields have been given values, now
+  // you can send a packet requesting a timestamp:
+  Udp.beginPacket(address, 123); //NTP requests are to port 123
+  //Serial.println("4");
+  Udp.write(packetBuffer, NTP_PACKET_SIZE);
+  //Serial.println("5");
+  Udp.endPacket();
+  //Serial.println("6");
+}
+
 void printWifiStatus() {
   // print the SSID of the network you're attached to:
   Serial.print("SSID: ");
@@ -202,4 +321,8 @@ void printWifiStatus() {
   // print where to go in a browser:
   Serial.print("To see this page in action, open a browser to http://");
   Serial.println(ip);
+}
+
+unsigned int time_to_temp(float t){
+return (unsigned int) 3200*pow(((1+cos((3.14159*(t-12)/12)))/2),1.5)+3000;
 }
