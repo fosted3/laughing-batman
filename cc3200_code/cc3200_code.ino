@@ -76,10 +76,15 @@ void loop() {
   delay(10);
   count++;
   if(count >= 30000 && active){//30000
+    Serial.println("Updating time");
+    boolean updated = false;
+    do
+    {
     sendNTPpacket(timeServer); // send an NTP packet to a time server
     // wait to see if a reply is available
     delay(1000);
     if ( Udp.parsePacket() ) {
+      updated = true;
     Serial.println("packet received");
     // We've received a packet, read the data from it
     Udp.read(packetBuffer, NTP_PACKET_SIZE); // read the packet into the buffer
@@ -123,7 +128,11 @@ void loop() {
     Serial1.print(" ");
     Serial1.println(active_brightness);
     }
-    
+    else
+    {
+      Serial.println("Failed to update time");
+    }
+    } while (!updated);
     count = 0;
   }
   
