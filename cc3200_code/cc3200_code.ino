@@ -82,7 +82,7 @@ void loop() {
     {
     sendNTPpacket(timeServer); // send an NTP packet to a time server
     // wait to see if a reply is available
-    delay(1000);
+    delay(2000);
     if ( Udp.parsePacket() ) {
       updated = true;
     Serial.println("packet received");
